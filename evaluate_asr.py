@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
-  
+
 import os
 import sys
 import glob
@@ -13,38 +13,39 @@ from diff_generator import diff_match_patch
 dmp = diff_match_patch()
 
 import speech_recognition as sr
-r = sr.Recognizer()
 
+r = sr.Recognizer()
 
 input_dir = '/home/tareq/Downloads/testset/testset1_noisy_smartphone_single_speaker'
 audio_extension = 'mp3'
 url = 'http://alap.centralindia.cloudapp.azure.com:8084/transcribe/form/output'
 
 
-
-
 def calculate_wer(hypothesis, ground_truth):
-        """
-        Computes the Word Error Rate, defined as the edit distance between the
-        two provided sentences after tokenizing to words.
-        Arguments:
-            hypothesis (string): space-separated sentence
-            ground_truth (string): space-separated sentence
-        """
-        # build mapping of words to integers
-        b = set(hypothesis.split() + ground_truth.split())
-        word2char = dict(zip(b, range(len(b))))
+    """
+    Computes the Word Error Rate, defined as the edit distance between the
+    two provided sentences after tokenizing to words.
+    Arguments:
+        hypothesis (string): space-separated sentence
+        ground_truth (string): space-separated sentence
+    """
+    # build mapping of words to integers
+    b = set(hypothesis.split() + ground_truth.split())
+    word2char = dict(zip(b, range(len(b))))
 
-        # map the words to a char array (Levenshtein packages only accepts
-        # strings)
-        w1 = [chr(word2char[w]) for w in hypothesis.split()]
-        w2 = [chr(word2char[w]) for w in ground_truth.split()]
+    # map the words to a char array (Levenshtein packages only accepts
+    # strings)
+    w1 = [chr(word2char[w]) for w in hypothesis.split()]
+    w2 = [chr(word2char[w]) for w in ground_truth.split()]
 
-        distance = Lev.distance(''.join(w1), ''.join(w2))
-        num_words = len(ground_truth.split())
-        return float(distance) / num_words
+    distance = Lev.distance(''.join(w1), ''.join(w2))
+    num_words = len(ground_truth.split())
+    return float(distance) / num_words
+
 
 from data import data
+
+
 def read_transcript(wav_path, audio_ext):
     text = ""
     file_name = wav_path.split(".")[0]
@@ -55,30 +56,36 @@ def read_transcript(wav_path, audio_ext):
         print(e)
     return text
 
+
 def write_predicted_transcript(wav_path, text, audio_ext):
-    transcript_path = wav_path.replace('.'+audio_ext, '-predicted.txt')
+    transcript_path = wav_path.replace('.' + audio_ext, '-predicted.txt')
     with open(transcript_path, mode='w', encoding='utf8') as f:
         f.write(text)
-    
 
-def write_html_report(results, avg_wer,asr_from="Test"):
+
+def write_html_report(results, avg_wer, ):
     base_dir = os.path.dirname(input_dir)
-    html_path = os.path.join(base_dir, 'report-'+os.path.basename(input_dir)+'.html')
+    html_path = os.path.join(base_dir, 'report-' + os.path.basename(input_dir) + '.html')
     print('Writing report to {}', html_path)
     print('Please open this file in your browser.')
     with open(html_path, mode='w', encoding='utf8') as f:
-        f.write('<h3>{} Average WER on {} files: {:.2f}</h3><br><br>'.format(asr_from,len(results), avg_wer))
-        for result in results:
+        f.write('<h3>Average WER on {} files: {:.2f}</h3><br><br>'.format(len(results), avg_wer))
+        for i, result in enumerate(results):
             f.write("Audio: {} <br>".format(result['audio']))
             f.write("WER: {:.2f} <br>".format(result['WER']))
             f.write("Transcript: {} <br>".format(result['diff_html']))
+            f.write("<br><audio controls autoplay><source src=\"{}\" type=\"audio/wav\"></audio><br>".format(
+                result['file_path']))
             f.write('<hr style="height:2px;border-width:0;color:gray;background-color:gray"><br>')
+
 
 def parser_socian_asr(file_path):
     post_file = {"file": open(file_path, 'rb')}
-    payload = {'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'}
-    r = requests.post(url, files=post_file,data=payload)
+    payload = {
+        'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'}
+    r = requests.post(url, files=post_file, data=payload)
     return r.json()['transcript']
+
 
 def parser_google_asr(file_path):
     text = ""
@@ -89,35 +96,26 @@ def parser_google_asr(file_path):
             print(text)
         except Exception as e:
             print('Sorry.. run again...', str(e))
+    return text
 
-    return  text
-if __name__ == '__main__':
 
-    input_dir = "/home/tamzid/Desktop/socian/asr-evaluate/test/audio"#params.input_dir
-    audio_extension = "wav"#params.audio_extension
-    url = "https://devs-beta.socian.ai:8085/transcribe/form/output"#params.api_endpoint
-    key = "Google" #google or socian
-
-    audios = glob.glob(os.path.join(input_dir, '*.' + audio_extension))
-    print("Total audio files found: ", len(audios))
-
-    if len(audios) < 1:
-        print('No audio found in dir: ', input_dir)
-        print('Have you specified the correct directory? Or try setting --audio-extension param if your audios are not in wav format')
-        sys.exit()
-
+def genarate_average_wer(key=None):
     total_wer = 0
     results = []
     for audio in tqdm(audios):
         try:
             print('\nProcessing file: ', audio)
-            #change here
+            # change here
             if key == "Google":
                 hyp_text = parser_google_asr(audio)
             else:
                 key = "Socian"
                 hyp_text = parser_socian_asr(audio)
-
+                hyp_text = hyp_text.replace("য়", "য়")
+                if hyp_text[-1] == " ":
+                    print(len(hyp_text))
+                    hyp_text = hyp_text[0:len(hyp_text)-1]
+                    print("------------------",hyp_text,len(hyp_text))
 
             ground_truth = read_transcript(audio, audio_extension)
             write_predicted_transcript(audio, hyp_text, audio_extension)
@@ -125,6 +123,7 @@ if __name__ == '__main__':
             diff = dmp.diff_main(ground_truth, hyp_text)
             total_wer += wer
             results.append({
+                'file_path': audio,
                 'audio': os.path.basename(audio),
                 'WER': wer,
                 'ground_truth': ground_truth,
@@ -140,6 +139,47 @@ if __name__ == '__main__':
             print('Connection lost. Failed to transcribe ', audio)
         # break
     avg_wer = total_wer / len(audios)
-    print("Avg WER on all files: ",avg_wer)
+    print("Avg WER on all files: ", avg_wer)
+    return results, avg_wer, key
 
-    write_html_report(results, avg_wer,asr_from=key)
+
+if __name__ == '__main__':
+
+    input_dir = "/home/tamzid/Desktop/socian/asr-evaluate/test/audio"  # params.input_dir
+    audio_extension = "wav"  # params.audio_extension
+    url = "https://devs-beta.socian.ai:8085/transcribe/form/output"  # params.api_endpoint
+    key = "Google"  # Google or Socian
+
+    audios = glob.glob(os.path.join(input_dir, '*.' + audio_extension))
+    print("Total audio files found: ", len(audios))
+
+    if len(audios) < 1:
+        print('No audio found in dir: ', input_dir)
+        print(
+            'Have you specified the correct directory? Or try setting --audio-extension param if your audios are not in wav format')
+        sys.exit()
+    results, avg_wer, key = genarate_average_wer(key="Socian")
+    results1, avg_wer1, key1 = genarate_average_wer(key="Google")
+
+    base_dir = os.path.dirname(input_dir)
+    html_path = os.path.join(base_dir, 'report-' + os.path.basename(input_dir) + '.html')
+    print('Writing report to {}', html_path)
+    print('Please open this file in your browser.')
+    with open(html_path, mode='w', encoding='utf8') as f:
+        f.write('<h3>Average WER on {} files: {:.2f}</h3><br><br>'.format(len(results), avg_wer))
+        for i, result in enumerate(results):
+            f.write("Audio: {} <br>".format(result['audio']))
+            f.write("Socian WER: {:.2f} <br>".format(result['WER']))
+            f.write("Google WER: {:.2f} <br>".format(results1[i]['WER']))
+            f.write("Original Transcript: {} <br>".format(result['ground_truth']))
+            f.write("Socian Transcript: {} <br>".format(result['diff_html']))
+            f.write("Google Transcript: {} <br>".format(results1[i]['diff_html']))
+            # f.write("Original Transcript: <p style=\"background-color : green;\">{}</p> <br>".format(
+            #     result['ground_truth']))
+            # f.write("Socian Transcript: <p style=\"background-color : green;\">{}</p> <br>".format(result['diff_html']))
+            # f.write("Google Transcript: <p style=\"background-color : green;\">{}</p> <br>".format(
+            #     results1[i]['diff_html']))
+
+            f.write("<br><audio controls><source src=\"{}\" type=\"audio/wav\"></audio><br>".format(
+                result['file_path']))
+            f.write('<hr style="height:2px;border-width:0;color:gray;background-color:gray"><br>')
