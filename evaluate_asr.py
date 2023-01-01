@@ -12,6 +12,9 @@ from diff_generator import diff_match_patch
 
 dmp = diff_match_patch()
 
+import speech_recognition as sr
+r = sr.Recognizer()
+
 
 input_dir = '/home/tareq/Downloads/testset/testset1_noisy_smartphone_single_speaker'
 audio_extension = 'mp3'
@@ -41,11 +44,15 @@ def calculate_wer(hypothesis, ground_truth):
         num_words = len(ground_truth.split())
         return float(distance) / num_words
 
-
+from data import data
 def read_transcript(wav_path, audio_ext):
-    transcript_path = wav_path.replace("."+audio_ext, '.txt')
-    with open(transcript_path, mode='r', encoding='utf8') as f:
-        text = f.read()
+    text = ""
+    file_name = wav_path.split(".")[0]
+    file_name = file_name.split("/")[-1]
+    try:
+        text = data[file_name]
+    except Exception as e:
+        print(e)
     return text
 
 def write_predicted_transcript(wav_path, text, audio_ext):
@@ -54,35 +61,42 @@ def write_predicted_transcript(wav_path, text, audio_ext):
         f.write(text)
     
 
-def write_html_report(results, avg_wer):
+def write_html_report(results, avg_wer,asr_from="Test"):
     base_dir = os.path.dirname(input_dir)
     html_path = os.path.join(base_dir, 'report-'+os.path.basename(input_dir)+'.html')
     print('Writing report to {}', html_path)
     print('Please open this file in your browser.')
     with open(html_path, mode='w', encoding='utf8') as f:
-        f.write('<h3>Average WER on {} files: {:.2f}</h3><br><br>'.format(len(results), avg_wer))
+        f.write('<h3>{} Average WER on {} files: {:.2f}</h3><br><br>'.format(asr_from,len(results), avg_wer))
         for result in results:
             f.write("Audio: {} <br>".format(result['audio']))
             f.write("WER: {:.2f} <br>".format(result['WER']))
             f.write("Transcript: {} <br>".format(result['diff_html']))
             f.write('<hr style="height:2px;border-width:0;color:gray;background-color:gray"><br>')
 
+def parser_socian_asr(file_path):
+    post_file = {"file": open(file_path, 'rb')}
+    payload = {'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'}
+    r = requests.post(url, files=post_file,data=payload)
+    return r.json()['transcript']
 
+def parser_google_asr(file_path):
+    text = ""
+    with sr.AudioFile(file_path) as source:
+        audio_text = r.listen(source)
+        try:
+            text = r.recognize_google(audio_text, language="bn-BD")
+            print(text)
+        except Exception as e:
+            print('Sorry.. run again...', str(e))
 
+    return  text
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input-dir', help='Path to the directory containing wavs and txts', 
-            type=str, required=True)
-    parser.add_argument('--audio-extension', help='Extension of the audio files in input_dir. Supported formats - almost all common formats (wav, mp3, aac etc)', 
-            type=str, default='wav')
-    parser.add_argument('--api-endpoint', help='API Endpoint URL where the ASR is deployed.',
-            type=str, default='http://alap.centralindia.cloudapp.azure.com:8086/transcribe/form/output')
-    
-    params = parser.parse_args()
 
-    input_dir = params.input_dir
-    audio_extension = params.audio_extension
-    url = params.api_endpoint
+    input_dir = "/home/tamzid/Desktop/socian/asr-evaluate/test/audio"#params.input_dir
+    audio_extension = "wav"#params.audio_extension
+    url = "https://devs-beta.socian.ai:8085/transcribe/form/output"#params.api_endpoint
+    key = "Google" #google or socian
 
     audios = glob.glob(os.path.join(input_dir, '*.' + audio_extension))
     print("Total audio files found: ", len(audios))
@@ -97,9 +111,14 @@ if __name__ == '__main__':
     for audio in tqdm(audios):
         try:
             print('\nProcessing file: ', audio)
-            post_file = {'file':open(audio, 'rb')}
-            r = requests.post(url, files=post_file)
-            hyp_text = r.json()['transcript']
+            #change here
+            if key == "Google":
+                hyp_text = parser_google_asr(audio)
+            else:
+                key = "Socian"
+                hyp_text = parser_socian_asr(audio)
+
+
             ground_truth = read_transcript(audio, audio_extension)
             write_predicted_transcript(audio, hyp_text, audio_extension)
             wer = calculate_wer(hyp_text, ground_truth)
@@ -119,8 +138,8 @@ if __name__ == '__main__':
         except Exception as e:
             print(e)
             print('Connection lost. Failed to transcribe ', audio)
-
+        # break
     avg_wer = total_wer / len(audios)
     print("Avg WER on all files: ",avg_wer)
 
-    write_html_report(results, avg_wer)
+    write_html_report(results, avg_wer,asr_from=key)
